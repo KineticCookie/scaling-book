@@ -519,7 +519,7 @@ I'm going to invent a new model based on LLaMA-2 13B for this section. Here are 
 
 Our total parameter count is thus $L * D * (3F + 2H * (N + K)) + D * V$. Plugging in the numbers above, we have `64 * 4096 * (3*16384 + 2 * 256 * (32 + 8)) + 4096 * 32128 = 18.4e9`. Thus, this model has about 18.4 billion parameters.
 
-The KV caches are $L * K * H$ per token, which is `64 * 8 * 256 = 131kB` per token.
+The KV caches are $2 * L * K * H$ per token in int8, which is `2 * 64 * 8 * 256 = 262kB` per token.
 
 {% enddetails %}
 
