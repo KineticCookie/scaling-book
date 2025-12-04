@@ -2074,9 +2074,9 @@ d-appendix > distill-appendix {
     return `
     <div class="byline grid">
       <div class="authors-affiliations grid">
-        <h3 style="grid-column: 1; grid-row: 1;">Authors</h3>
+        <h3 style="grid-column: 1; grid-row: 1;">Авторы</h3>
         <h3></h3>
-        <h3>Affiliation</h3>
+        <h3>Аффилированные организации</h3>
         ${frontMatter.authors.map((author, index) => `
           <p class="author" style="grid-column: ${Math.ceil((index + 1) / half)}; grid-row: ${index % half + 2};">
             ${author.personalURL ? `
@@ -2091,10 +2091,10 @@ d-appendix > distill-appendix {
         `).join('')}
       </div>
       <div>
-        <h3>Published</h3>
+        <h3>Опубликовано</h3>
         ${frontMatter.publishedDate ? `
           <p>${frontMatter.publishedMonth} ${frontMatter.publishedDay}, ${frontMatter.publishedYear}</p> ` : `
-          <p><em>Not published yet.</em></p>`}
+          <p><em>Еще не опубликовано.</em></p>`}
       </div>
     </div>
   `;
