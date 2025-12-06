@@ -1,0 +1,201 @@
+<!DOCTYPE html> <html> <head> <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"> <meta charset="utf-8"> <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"> <meta http-equiv="X-UA-Compatible" content="IE=edge"> <title> How To Scale Your Model </title> <meta name="author" content=" "> <meta name="description" content="Обучение больших языковых моделей часто напоминает алхимию, но на самом деле понимать и оптимизировать их работу не так уж сложно. Эта книга объясняет науку масштабирования языковых моделей: как устроены TPU и GPU и как они взаимодействуют между собой, как LLM выполняются на реальном железе, и как распараллелить модели при обучении и инференсе для эффективной работы в огромных масштабах. Если вас когда-нибудь интересовало, во сколько обойдётся обучение конкретной LLM, сколько памяти понадобится для самостоятельного запуска модели, или что вообще такое AllGather то эта книга для вас."> <meta name="keywords" content="scaling, jax, llms, transformers, tpus, google, deepmind, parallelism, pallas"> <link rel="stylesheet" href="/scaling-book/assets/css/bootstrap.min.css?a4b3f509e79c54a512b890d73235ef04"> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mdbootstrap@4.20.0/css/mdb.min.css" integrity="sha256-jpjYvU3G3N6nrrBwXJoVEYI/0zw8htfFnhT9ljN3JJw=" crossorigin="anonymous"> <link defer rel="stylesheet" href="/scaling-book/assets/css/academicons.min.css?f0b7046b84e425c55f3463ac249818f5"> <link defer rel="stylesheet" href="/scaling-book/assets/css/scholar-icons.css?62b2ac103a88034e6882a5be5f3e2772"> <link defer rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Roboto+Slab:100,300,400,500,700|Material+Icons&amp;display=swap"> <link defer rel="stylesheet" href="/scaling-book/assets/css/jekyll-pygments-themes-vs.css?4ee1a2facd1a8a76347f4bd43a740500" media="" id="highlight_theme_light"> <link rel="shortcut icon" href="/scaling-book/assets/img/favicon.ico?fddbd8c2ec231ba2060e67c85de32a55"> <link rel="stylesheet" href="/scaling-book/assets/css/main.css?d41d8cd98f00b204e9800998ecf8427e"> <link rel="canonical" href="https://kineticcookie.github.io/scaling-book/"> <script src="/scaling-book/assets/js/theme.js?9a0c749ec5240d9cda97bc72359a72c0"></script> <link defer rel="stylesheet" href="/scaling-book/assets/css/jekyll-pygments-themes-native.css?5847e5ed4a4568527aa6cfab446049ca" media="none" id="highlight_theme_dark"> <script>
+    initTheme();
+  </script> <script src="/scaling-book/assets/js/distillpub/template.v2.js"></script> <script src="/scaling-book/assets/js/distillpub/transforms.v2.js"></script> <style type="text/css">{{page._styles}}</style> </head> <body> <d-front-matter> <script async type="text/json">
+      {
+            "title": "Как масштабировать свою модель",
+            "description": "Обучение больших языковых моделей часто напоминает алхимию, но на самом деле понимать и оптимизировать их работу не так уж сложно. Эта книга объясняет науку масштабирования языковых моделей: как устроены TPU и GPU и как они взаимодействуют между собой, как LLM выполняются на реальном железе, и как распараллелить модели при обучении и инференсе для эффективной работы в огромных масштабах. Если вас когда-нибудь интересовало, во сколько обойдётся обучение конкретной LLM, сколько памяти понадобится для самостоятельного запуска модели, или что вообще такое AllGather то эта книга для вас.",
+            "published": "February 04, 2025",
+            "authors": [
+              
+              {
+                "author": "Jacob Austin",
+                "authorURL": "https://www.jacobaustin.org/",
+                "affiliations": [
+                  {
+                    "name": "Google DeepMind",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Sholto Douglas",
+                "authorURL": "https://x.com/_sholtodouglas",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Roy Frostig",
+                "authorURL": "https://cs.stanford.edu/~rfrostig/",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Anselm Levskaya",
+                "authorURL": "https://anselmlevskaya.com/",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Charlie Chen",
+                "authorURL": "https://x.com/charliexychen",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Sharad Vikram",
+                "authorURL": "https://sharadvikram.com/",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Federico Lebron",
+                "authorURL": "https://fedelebron.com/",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Peter Choy",
+                "authorURL": "https://x.com/pchoy95",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Vinay Ramasesh",
+                "authorURL": "https://x.com/vinayramasesh",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Albert Webson",
+                "authorURL": "https://representation.ai/",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              },
+              
+              {
+                "author": "Reiner Pope<sup>*</sup>",
+                "authorURL": "https://x.com/reinerpope",
+                "affiliations": [
+                  {
+                    "name": "",
+                    "url": ""
+                  }
+                ]
+              }
+              
+            ],
+            "katex": {
+              "delimiters": [
+                {
+                  "left": "$",
+                  "right": "$",
+                  "display": false
+                },
+                {
+                  "left": "$$",
+                  "right": "$$",
+                  "display": true
+                }
+              ]
+            }
+          }
+    </script> </d-front-matter> <header> <script>
+    function goToTop() {
+      document.body.scrollTop = 0; // For Safari
+      document.documentElement.scrollTop = 0; // For Chrome, Firefox, IE and Opera
+    }
+
+    // When the user scrolls down 20px from the top of the document, show the button
+    window.onscroll = function() {scrollFunction()};
+
+    function scrollFunction() {
+      // Get the button:
+      let mybutton = document.getElementById("top-button");
+
+      if (document.body.scrollTop > 40 || document.documentElement.scrollTop > 40) {
+        mybutton.style.display = "block";
+      } else {
+        mybutton.style.display = "none";
+      }
+  }
+  </script> <nav id="navbar" class="navbar navbar-light navbar-expand-sm fixed-top" role="navigation"> <div class="container"> <a class="navbar-brand title font-weight-lighter" href="/scaling-book"> How To Scale Your Model </a> <button class="navbar-toggler collapsed ml-auto" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation"> <span class="sr-only">Toggle navigation</span> <span class="icon-bar top-bar"></span> <span class="icon-bar middle-bar"></span> <span class="icon-bar bottom-bar"></span> </button> <div class="left-button section-button"><a href=""><svg viewbox="-78.5 0 512 512"><path d="M257 64L291 98 128 262 291 426 257 460 61 262 257 64Z"></path></svg></a></div> <div class="right-button section-button"><a href="roofline"><svg viewbox="-78.5 0 512 512"><path d="M98 460L64 426 227 262 64 98 98 64 294 262 98 460Z"></path></svg></a></div> <div class="collapse navbar-collapse text-right" id="navbarNav"> <ul class="navbar-nav ml-auto flex-nowrap"> <li class="nav-item "> <a class="nav-link" href="/scaling-book/"> </a> </li> <li class="nav-item nav-hidden"><a class="nav-link" onclick="goToTop()" id="top-button" style="display: none;">Back to Top</a></li> <li class="nav-item nav-hidden"><p class="nav-link"></p></li> <li class="nav-item nav-hidden"><a class="nav-link" href="">Previous Part</a></li> <li class="nav-item nav-hidden"><a class="nav-link" href="roofline">Next Part</a></li> <li class="nav-item nav-hidden"><p class="nav-link"></p></li> <li class="nav-item dropdown "> <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Sections </a> <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown"> <a class="dropdown-item " href="/scaling-book/index">Part 0. Introduction</a> <a class="dropdown-item " href="/scaling-book/roofline">Part 1. Intro to Rooflines</a> <a class="dropdown-item " href="/scaling-book/tpus">Part 2. All About TPUs</a> <a class="dropdown-item " href="/scaling-book/sharding">Part 3. Sharded Matmuls</a> <a class="dropdown-item " href="/scaling-book/transformers">Part 4. Transformers</a> <a class="dropdown-item " href="/scaling-book/training">Part 5. Training</a> <a class="dropdown-item " href="/scaling-book/applied-training">Part 6. Training LLaMA</a> <a class="dropdown-item " href="/scaling-book/inference">Part 7. Inference</a> <a class="dropdown-item " href="/scaling-book/applied-inference">Part 8. Serving LLaMA</a> <a class="dropdown-item " href="/scaling-book/profiling">Part 9. Profiling</a> <a class="dropdown-item " href="/scaling-book/jax-stuff">Part 10. All About JAX</a> <a class="dropdown-item " href="/scaling-book/conclusion">Part 11. Conclusions</a> <a class="dropdown-item " href="/scaling-book/gpus">Part 12. GPUs</a> </div> </li> <li class="toggle-container"> <button id="light-toggle" title="Change theme"> <i class="ti ti-sun-moon" id="light-toggle-system"></i> <i class="ti ti-moon-filled" id="light-toggle-dark"></i> <i class="ti ti-sun-filled" id="light-toggle-light"></i> </button> </li> </ul> </div> </div> </nav> <progress id="progress" value="0"> <div class="progress-container"> <span class="progress-bar"></span> </div> </progress> </header> <div class="post distill"> <d-title> <h1>Как масштабировать свою модель</h1> <p><span class="subtitle">Системный взгляд на LLM на TPU</span> <span class="subtitle-links">(Часть 0: Введение | <a href="roofline">Часть 1: Rooflines</a>)</span></p> <p>Обучение больших языковых моделей часто напоминает алхимию, но на самом деле понимать и оптимизировать их работу не так уж сложно. Эта книга объясняет науку масштабирования языковых моделей: как устроены TPU и GPU и как они взаимодействуют между собой, как LLM выполняются на реальном железе, и как распараллелить модели при обучении и инференсе для эффективной работы в огромных масштабах. Если вас когда-нибудь интересовало, во сколько обойдётся обучение конкретной LLM, сколько памяти понадобится для самостоятельного запуска модели, или что вообще такое AllGather то эта книга для вас.</p> </d-title> <d-byline></d-byline> <d-article> <d-contents> <nav class="l-text figcaption"> <h3>Содержание</h3> <div> <a href="#%D0%BE%D0%B1%D1%89%D0%B0%D1%8F-%D1%81%D1%82%D1%80%D1%83%D0%BA%D1%82%D1%83%D1%80%D0%B0">Общая структура</a> </div> <div> <a href="#%D1%81%D1%81%D1%8B%D0%BB%D0%BA%D0%B8-%D0%BD%D0%B0-%D1%80%D0%B0%D0%B7%D0%B4%D0%B5%D0%BB%D1%8B">Ссылки на разделы</a> </div> </nav> </d-contents> <figure> <picture> <source class="responsive-img-srcset" srcset="/scaling-book/assets/img/dragon-480.webp 480w,/scaling-book/assets/img/dragon-800.webp 800w,/scaling-book/assets/img/dragon-1400.webp 1400w," type="image/webp" sizes="95vw"></source> <img src="/scaling-book/assets/img/dragon.png" class="img-fluid" width="100%" height="auto" loading="lazy" onerror="this.onerror=null; $('.responsive-img-srcset').remove();"> </picture> </figure> <p>Большая часть глубокого обучения до сих пор остаётся чем-то вроде чёрной магии, но оптимизация производительности моделей не должна быть такой же — даже при работе в огромных масштабах! Относительно простые принципы работают везде — от одного ускорителя до десятков тысяч — и их понимание открывает много возможностей:</p> <ul> <li>Прикинуть, насколько близки части вашей модели к теоретическому оптимуму.</li> <li>Осознанно выбирать схемы параллелизма на разных масштабах (как распределить вычисления по множеству устройств).</li> <li>Оценить стоимость и время обучения и запуска больших Transformer-моделей.</li> <li>Разрабатывать алгоритмы, использующие специфические возможности железа. Примеры: <a href="https://arxiv.org/abs/2205.14135" rel="external nofollow noopener" target="_blank">раз</a>, <a href="https://arxiv.org/abs/1911.02150" rel="external nofollow noopener" target="_blank">два</a>, <a href="https://arxiv.org/abs/2007.00072" rel="external nofollow noopener" target="_blank">три</a>.</li> <li>Проектировать железо на основе чёткого понимания того, что ограничивает производительность текущих алгоритмов.</li> </ul> <p><strong>Требуемые знания:</strong> Мы предполагаем что у вас есть базовое понимание LLM и архитектуры Transformer, и вы еще не разобрались как они работают в масштабе. Вы должны знать основы обучения LLM и в идеале иметь минимальное знакомство с JAX. Полезное фоновое чтение: <a href="https://jalammar.github.io/illustrated-transformer/" rel="external nofollow noopener" target="_blank">этот блог-пост</a> об архитектуре Transformer и <a href="https://arxiv.org/abs/1706.03762" rel="external nofollow noopener" target="_blank">оригинальная статья</a>. Также посмотрите <a href="conclusion#further-reading">этот список</a> с дополнительными материалами.</p> <p><strong>Цели и обратная связь:</strong> К концу книги вы должны уверенно оценивать оптимальную схему параллелизма для Transformer-модели на конкретном железе и примерно понимать, сколько займёт обучение и инференс. Если что-то непонятно — пишите нам или оставляйте комментарии! Мы хотим знать, как сделать материал понятнее.</p> <p class="announce">Возможно, вам также понравится новый <a href="gpus">Раздел 12</a> про GPU от NVIDIA!</p> <h3 id="зачем-вам-это-нужно">Зачем вам это нужно?</h3> <p>Три-четыре года назад большинству ML-исследователей не требовалось понимать то, о чём эта книга. Но сегодня даже “маленькие” модели работают настолько близко к пределам железа, что любое новое исследование требует думать об эффективности в масштабе.<d-footnote>Исторически ML-исследования следовали циклу tick-tock между системными инновациями и улучшениями софта. Алексу Крижевскому пришлось писать жуткий CUDA-код, чтобы сделать свёрточные сети быстрыми, но через пару лет библиотеки вроде Theano и TensorFlow решили эту проблему. Возможно, то же самое произойдёт и здесь, и всё из этой книги будет абстрагировано через несколько лет. Но законы масштабирования постоянно толкают наши модели к пределам возможностей железа, и похоже, что в обозримом будущем передовые исследования будут неразрывно связаны с пониманием эффективного масштабирования моделей на больших кластерах.</d-footnote> <strong>Выигрыш в 20% на бенчмарках бесполезен, если он съедает 20% roofline.</strong> Многообещающие архитектуры регулярно проваливаются либо потому, что они <em>не могут</em> работать эффективно в масштабе, либо потому, что никто не вкладывает усилия, чтобы это исправить.</p> <blockquote> <p><strong>От переводчика:</strong> Roofline — метод анализа производительности, который показывает теоретический максимум производительности системы как “потолок” (roof + line = линия крыши).</p> </blockquote> <p><strong>Цель “масштабирования модели” — увеличивать количество чипов для обучения или инференса с пропорциональным, линейным ростом пропускной способности.</strong> Это называется “сильным масштабированием” (strong scaling). Добавление чипов (“параллелизм”) обычно сокращает время вычислений, но требует дополнительной коммуникации между ними. Когда коммуникация занимает больше времени, чем вычисления, мы становимся ограничены коммуникацией (communication-bound) и теряем возможность сильного масштабирования.<d-footnote>По мере сокращения времени вычислений вы также сталкиваетесь с узкими местами на уровне отдельного чипа. Ваш новенький TPU или GPU может быть рассчитан на 500 триллионов операций в секунду, но при неаккуратной работе он легко застрянет на перемещении параметров в памяти и выдаст лишь десятую часть от расчётной производительности. Баланс между вычислениями на чипе, пропускной способностью памяти и её объёмом критичен для масштабирования.</d-footnote> Если мы достаточно хорошо понимаем наше железо, чтобы предвидеть узкие места, мы можем спроектировать или переконфигурировать модели так, чтобы их избежать.<d-footnote>Разработчики железа решают обратную задачу: создать чипы с достаточными вычислениями, пропускной способностью и памятью для наших алгоритмов при минимальной стоимости. Представьте, насколько стрессовая такая совместная разработка: нужно делать ставку на то, как будут выглядеть алгоритмы через 2-3 года, когда чипы станут доступны. В этом плане история TPU была успехом. Матричное умножение уникально тем, что использует гораздо больше операций на байт памяти, чем почти любой другой алгоритм (N операций на байт), и ранние TPU с систолическими массивами достигли гораздо лучшего соотношения производительность/доллар, чем GPU того времени. TPU проектировались под ML-задачи, а GPU с их TensorCore быстро адаптируются. Но представьте, насколько дорого было бы, если бы нейросети не взлетели в популярности или изменились так, что TPU (менее гибкие по природе, чем GPU) не смогли бы справиться.</d-footnote></p> <p>Наша цель в этой книге — объяснить, как работает железо TPU и GPU и как архитектура Transformer эволюционировалась для эффективной работы на современном оборудовании. Надеемся, это будет полезно как исследователям, разрабатывающим новые архитектуры, так и инженерам, оптимизирующим текущее поколение LLM.</p> <h2 id="общая-структура">Общая структура</h2> <p>Книга построена следующим образом:</p> <p><a href="roofline">Раздел 1</a> объясняет roofline-анализ и факторы, которые могут ограничивать масштабирование: коммуникации, вычисления и память. <a href="tpus">Разделы 2</a> и <a href="sharding">3</a> подробно разбирают работу TPU — как отдельных чипов, так и целых взаимосвязанных систем, где связи между чипами имеют ограниченную пропускную способность и задержки. Мы ответим на такие вопросы:</p> <ul> <li>Сколько должно занимать матричное умножение заданного размера? Когда оно упирается в вычисления, когда в память, а когда в пропускную способность?</li> <li>Как TPU объединяются в кластеры для обучения? Какая пропускная способность у разных частей системы?</li> <li>Сколько времени занимает gather, scatter или перераспределение массивов между несколькими TPU?</li> <li>Как эффективно перемножать матрицы, распределённые по устройствам по-разному?</li> </ul> <figure> <picture> <source class="responsive-img-srcset" srcset="/scaling-book/assets/img/pointwise-product-480.webp 480w,/scaling-book/assets/img/pointwise-product-800.webp 800w,/scaling-book/assets/img/pointwise-product-1400.webp 1400w," type="image/webp" sizes="95vw"></source> <img src="/scaling-book/assets/img/pointwise-product.gif" class="img-small" width="100%" height="auto" loading="lazy" onerror="this.onerror=null; $('.responsive-img-srcset').remove();"> </picture> <figcaption class="caption"><b>Рисунок:</b> диаграмма из <a href="tpus">Раздела 2</a>, показывающая, как TPU выполняет поэлементное произведение. В зависимости от размера массивов и пропускной способности различных связей мы можем оказаться ограничены вычислениями (используя полную вычислительную мощность железа) или коммуникацией (с узким местом в загрузке памяти).</figcaption> </figure> <p>Пять лет назад в машинном обучении существовало множество архитектур — ConvNet, LSTM, MLP, трансформеры — но сейчас почти везде используются только трансформеры<d-cite key="transformers"></d-cite>. Мы убеждены, что важно понимать каждый элемент архитектуры трансформера: точные размеры всех матриц, где применяется нормализация, сколько параметров и FLOP<d-footnote>FLoating point OPs — в основном сложения и умножения. Хотя часто FLOP используют для обозначения операций в секунду, мы пишем FLOP/s, чтобы явно это показать.</d-footnote> приходится на каждую часть. В <a href="transformers">разделе 4</a> мы подробно разбираем эту “математику трансформера” и показываем, как считать параметры и FLOP для обучения и инференса. Это позволяет понять, сколько памяти займёт модель, сколько времени уйдёт на вычисления или коммуникацию, и когда механизм внимания (attention) станет важнее feed-forward блоков.</p> <figure> <picture> <source class="responsive-img-srcset" srcset="/scaling-book/assets/img/transformer-diagram-480.webp 480w,/scaling-book/assets/img/transformer-diagram-800.webp 800w,/scaling-book/assets/img/transformer-diagram-1400.webp 1400w," type="image/webp" sizes="95vw"></source> <img src="/scaling-book/assets/img/transformer-diagram.png" class="img-fluid" width="100%" height="auto" loading="lazy" onerror="this.onerror=null; $('.responsive-img-srcset').remove();"> </picture> <figcaption class="caption"><b>Рисунок:</b> стандартный слой Transformer. Каждое матричное умножение (matmul) обозначено точкой в круге. Параметры модели выделены фиолетовым (за исключением нормализаций). Подробный разбор диаграммы — в <a href="transformers">разделе 4</a>.</figcaption> </figure> <p><a href="training">Раздел 5: Обучение</a> и <a href="inference">Раздел 7: Инференс</a> — это сердце книги. В них мы разбираем ключевой вопрос: есть модель определённого размера и какое-то количество чипов — как распараллелить её так, чтобы оставаться в режиме эффективного масштабирования? Вопрос звучит просто, но ответ на него удивительно сложный. Если коротко: существует 4 основных способа параллелизма для распределения моделей по чипам (<strong>по данным</strong>, <strong>по тензорам</strong>, <strong>конвейерный</strong> и <strong>по экспертам</strong>), плюс ещё несколько техник для снижения потребления памяти (<strong>rematerialisation</strong>, <strong>optimizer/model sharding (ZeRO)</strong>, <strong>host offload</strong>, <strong>gradient accumulation</strong>). Многие из них мы здесь и разберём.</p> <p>К концу этих разделов вы сможете самостоятельно выбирать подходящие подходы для новых архитектур и сценариев. <a href="applied-training">Раздел 6</a> и <a href="applied-inference">Раздел 8</a> — это практические руководства, где эти концепции применяются к LLaMA-3, популярной open-source модели.</p> <p>В <a href="profiling">Разделе 9</a> и <a href="jax-stuff">Разделе 10</a> разбирается, как реализовать эти идеи на JAX и как профилировать и дебажить код, когда что-то пошло не так. <a href="gpus">Раздел 12</a> — свежее дополнение, посвящённое GPU.</p> <p>По всей книге мы даём задачи для самостоятельной проработки. Не обязательно читать все разделы подряд — выбирайте то, что вам интересно. Будем рады любой обратной связи. Книга пока в статусе черновика и продолжает дорабатываться. Спасибо!</p> <p><em>Благодарим James Bradbury и Blake Hechtman — многие идеи в этой книге основаны на их работе.</em></p> <h3 class="next-section">Итак, <a href="roofline">перейдём к Разделу 1</a> про roofline-модели TPU.</h3> <h2 id="содержание">Содержание</h2> <p>Книга получилась довольно объёмной, но надеемся, это вас не отпугнёт. Первые три главы — это введение, их можно пропустить, если тема знакома, хотя там вводятся обозначения, которые используются дальше. Последние три части, пожалуй, самые практически полезные — там разбирается работа с реальными моделями.</p> <p><strong>Часть 1: Основы</strong></p> <ul> <li> <p><a href="roofline"><strong>Глава 1: Краткое введение в Roofline-анализ</strong></a>. Производительность алгоритмов ограничена тремя факторами: вычислениями, передачей данных и памятью. С их помощью можно прикинуть, как быстро будет работать алгоритм.</p> </li> <li> <p><a href="tpus"><strong>Глава 2: Как устроены TPU</strong></a>. Принцип работы TPU и как это влияет на то, какие модели мы можем обучать и разворачивать.</p> </li> <li> <p><a href="sharding"><strong>Глава 3: Шардированные матрицы и их умножение</strong></a>. Разбираем шардирование моделей и параллелизм на нескольких TPU на примере нашей любимой операции — перемножения шардированных матриц.</p> </li> </ul> <p><strong>Часть 2: Трансформеры</strong></p> <ul> <li> <p><a href="transformers"><strong>Глава 4: Вся необходимая математика трансформеров</strong></a>. Сколько FLOP выполняет трансформер за прямой и обратный проход? Как посчитать количество параметров? Размер KV-кэшей? Разбираем все эти расчёты.</p> </li> <li> <p><a href="training"><strong>Глава 5: Как распараллелить трансформер для обучения</strong></a>. FSDP. Megatron-шардинг. Конвейерный параллелизм. Есть N чипов — как обучить модель заданного размера с нужным batch size максимально эффективно?</p> </li> <li> <p><a href="applied-training"><strong>Глава 6: Обучение LLaMA 3 на TPU</strong></a>. Как обучать LLaMA 3 на TPU? Сколько времени это займёт? Во сколько обойдётся?</p> </li> <li> <p><a href="inference"><strong>Глава 7: Всё об инференсе трансформеров</strong></a>. После обучения модель нужно запустить в production. Инференс добавляет новое ограничение — латентность — и меняет картину с памятью. Разберём, как работает disaggregated serving и как правильно думать о KV-кэшах.</p> </li> <li> <p><a href="applied-inference"><strong>Глава 8: Запуск LLaMA 3 на TPU</strong></a>. Во сколько обойдётся инференс LLaMA 3 на TPU v5e? Какие есть компромиссы между латентностью и пропускной способностью?</p> </li> </ul> <p><strong>Часть 3: Практические руководства</strong></p> <ul> <li> <p><a href="profiling"><strong>Глава 9: Как профилировать код на TPU</strong></a>. Реальные LLM всегда сложнее теории. Здесь мы разбираем стек JAX + XLA и показываем, как использовать профайлер JAX/TensorBoard для отладки и решения реальных проблем.</p> </li> <li> <p><a href="jax-stuff"><strong>Глава 10: Программирование TPU на JAX</strong></a>. JAX предлагает множество мощных API для параллелизации вычислений, но нужно понимать, как ими пользоваться. Интересные примеры и разобранные задачи.</p> </li> </ul> <p><strong>Часть 4: Выводы и бонусный контент</strong></p> <ul> <li> <p><a href="conclusion"><strong>Глава 11: Выводы и дополнительное чтение</strong></a>. Заключительные мысли и дополнительные материалы по TPU и LLM.</p> </li> <li> <p><a href="gpus"><strong>Глава 12: Как устроены GPU</strong></a>. Бонусный раздел о GPU: как они работают, как объединяются в кластеры, и чем их roofline отличается от TPU.</p> </li> </ul> </d-article> <d-appendix> <d-footnote-list></d-footnote-list> <d-citation-list></d-citation-list> <div class="base-grid appendix-entry"> <h3 style="grid-column: 0;">Miscellaneous</h3> <p class="author-footnote" style="grid-column: text;"><sup>*</sup>Work done at Google DeepMind, now at MatX.</p> </div> <div class="base-grid appendix-entry"> <h3 style="grid-column: 0;">Citation</h3> <p class="author-footnote">For attribution in academic contexts, please cite this work as:</p> <div class="author-footnote"> <div class="language-bibtex highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c">Austin et al., "How to Scale Your Model", Google DeepMind, online, 2025.</span>
+</code></pre></div></div> </div> <p class="author-footnote">or as a BibTeX entry:</p> <div class="author-footnote"> <div class="language-bibtex highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="nc">@article</span><span class="p">{</span><span class="nl">scaling-book</span><span class="p">,</span>
+      <span class="na">title</span> <span class="p">=</span> <span class="s">{How to Scale Your Model}</span><span class="p">,</span>
+      <span class="na">author</span> <span class="p">=</span> <span class="s">{Austin, Jacob and Douglas, Sholto and Frostig, Roy and Levskaya, Anselm and Chen, Charlie and Vikram, Sharad
+      and Lebron, Federico and Choy, Peter and Ramasesh, Vinay and Webson, Albert and Pope, Reiner}</span><span class="p">,</span>
+      <span class="na">publisher</span> <span class="p">=</span> <span class="s">{Google DeepMind}</span><span class="p">,</span>
+      <span class="na">howpublished</span> <span class="p">=</span> <span class="s">{Online}</span><span class="p">,</span>
+      <span class="na">note</span> <span class="p">=</span> <span class="s">{Retrieved from https://jax-ml.github.io/scaling-book/}</span><span class="p">,</span>
+      <span class="na">year</span> <span class="p">=</span> <span class="s">{2025}</span>
+    <span class="p">}</span>
+</code></pre></div></div> </div> </div> </d-appendix> <d-bibliography src="/scaling-book/assets/bibliography/main.bib"></d-bibliography> <div id="giscus_thread" style="max-width: 930px; margin: 0 auto;"> <script>
+      let giscusTheme = determineComputedTheme();
+      let giscusAttributes = {
+        src: 'https://giscus.app/client.js',
+        'data-repo': 'jax-ml/scaling-book',
+        'data-repo-id': '',
+        'data-category': 'General',
+        'data-category-id': '',
+        'data-mapping': 'title',
+        'data-strict': '1',
+        'data-reactions-enabled': '1',
+        'data-emit-metadata': '0',
+        'data-input-position': 'bottom',
+        'data-theme': giscusTheme,
+        'data-loading': '1',
+        'data-lang': 'en',
+        crossorigin: 'anonymous',
+        async: '',
+      };
+
+      let giscusScript = document.createElement('script');
+      Object.entries(giscusAttributes).forEach(([key, value]) => giscusScript.setAttribute(key, value));
+      document.getElementById('giscus_thread').appendChild(giscusScript);
+    </script> <noscript>Please enable JavaScript to view the <a href="http://giscus.app/?ref_noscript" rel="external nofollow noopener" target="_blank">comments powered by giscus.</a> </noscript> </div> </div> <footer class="sticky-bottom mt-5" role="contentinfo"> <div class="container"> © Copyright 2025 . Powered by <a href="https://jekyllrb.com/" target="_blank" rel="external nofollow noopener">Jekyll</a> with <a href="https://github.com/alshedivat/al-folio" rel="external nofollow noopener" target="_blank">al-folio</a> theme. Hosted by <a href="https://pages.github.com/" target="_blank" rel="external nofollow noopener">GitHub Pages</a>. </div> </footer> <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script> <script src="/scaling-book/assets/js/bootstrap.bundle.min.js"></script> <script src="https://cdn.jsdelivr.net/npm/mdbootstrap@4.20.0/js/mdb.min.js" integrity="sha256-NdbiivsvWt7VYCt6hYNT3h/th9vSTL4EDWeGs5SN3DA=" crossorigin="anonymous"></script> <script defer src="https://cdn.jsdelivr.net/npm/medium-zoom@1.1.0/dist/medium-zoom.min.js" integrity="sha256-ZgMyDAIYDYGxbcpJcfUnYwNevG/xi9OHKaR/8GK+jWc=" crossorigin="anonymous"></script> <script defer src="/scaling-book/assets/js/zoom.js?85ddb88934d28b74e78031fd54cf8308"></script> <script src="/scaling-book/assets/js/no_defer.js?2781658a0a2b13ed609542042a859126"></script> <script defer src="/scaling-book/assets/js/common.js?e0514a05c5c95ac1a93a8dfd5249b92e"></script> <script defer src="/scaling-book/assets/js/copy_code.js?12775fdf7f95e901d7119054556e495f" type="text/javascript"></script> <script defer src="/scaling-book/assets/js/jupyter_new_tab.js?d9f17b6adc2311cbabd747f4538bb15f"></script> <script defer type="text/javascript" id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js" integrity="sha256-MASABpB4tYktI2Oitl4t+78w/lyA+D7b/s9GEP0JOGI=" crossorigin="anonymous"></script> <script src="/scaling-book/assets/js/mathjax-setup.js?70d799092f862ad98c7876aa47712e20"></script> <script defer src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6" crossorigin="anonymous"></script> <script defer src="/scaling-book/assets/js/progress-bar.js?2f30e0e6801ea8f5036fa66e1ab0a71a" type="text/javascript"></script> <script src="/scaling-book/assets/js/vanilla-back-to-top.min.js?f40d453793ff4f64e238e420181a1d17"></script> <script>
+    addBackToTop();
+  </script> </body> </html>
