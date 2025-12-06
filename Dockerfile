@@ -7,7 +7,7 @@ FROM ruby:slim
 # ARG USERID=901
 # ARG USERNAME=jekyll
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
 LABEL authors="Amir Pourmand,George Araújo" \
       description="Docker image for al-folio academic template" \
@@ -54,7 +54,7 @@ ENV EXECJS_RUNTIME=Node \
 RUN mkdir /srv/jekyll
 
 # copy the Gemfile and Gemfile.lock to the image
-ADD Gemfile.lock /srv/jekyll
+# ADD Gemfile.lock /srv/jekyll # since .lock file is not commited, I builds are not reproducible and I kinda don't care about that right now
 ADD Gemfile /srv/jekyll
 
 # set the working directory
@@ -62,11 +62,13 @@ WORKDIR /srv/jekyll
 
 # install jekyll and dependencies
 RUN gem install --no-document jekyll bundler
-RUN bundle install --no-cache
+RUN bundle install
 
 EXPOSE 8080
 
 COPY bin/entry_point.sh /tmp/entry_point.sh
+
+RUN chmod +x /tmp/entry_point.sh
 
 # uncomment this if you are having this issue with the build:
 # /usr/local/bundle/gems/jekyll-4.3.4/lib/jekyll/site.rb:509:in `initialize': Permission denied @ rb_sysopen - /srv/jekyll/.jekyll-cache/.gitignore (Errno::EACCES)

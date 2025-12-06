@@ -1,5 +1,4 @@
-
-#!/bin/bash
+#!/bin/env bash
 set -euo pipefail
 
 echo "Entry point script running"
@@ -22,6 +21,8 @@ manage_gemfile_lock() {
 
 start_jekyll() {
     manage_gemfile_lock
+    echo "Installing Ruby gems..."
+    bundle install
     bundle exec jekyll serve --watch --port=8080 --host=0.0.0.0 --livereload --verbose --trace --force_polling &
 }
 
