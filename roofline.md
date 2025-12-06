@@ -1,8 +1,9 @@
 ---
 layout: distill
-title: "All About Rooflines"
+title: "Все о Rooflines"
 # permalink: /main/
-description: "When we run algorithms on hardware, we're bounded by three things: how fast our computer can do math (OPs/second), the bandwidth available for moving data around (bytes/second), and the total memory available to store data (bytes). These “roofline” constraints let us upper and lower bound the time of a given computation."
+description: "Когда мы запускаем алгоритмы на железе, нас ограничивают три вещи: скорость вычислений (операций/сек), пропускная способность для перемещения данных (байт/сек) и общий объём доступной памяти для хранения данных (байты). Эти ограничения (roofline) позволяют нам оценить верхнюю и нижнюю границы времени выполнения конкретных вычислений.
+"
 date: 2025-02-04
 future: true
 htmlwidgets: true
@@ -11,10 +12,10 @@ hidden: false
 section_number: 1
 
 previous_section_url: ".."
-previous_section_name: "Part 0: Introduction"
+previous_section_name: "Часть 0: Введение"
 
 next_section_url: ../tpus
-next_section_name: "Part 2: TPUs"
+next_section_name: "Часть 2: TPU"
 
 bibliography: main.bib
 
@@ -52,12 +53,12 @@ authors:
 #   - please use this format rather than manually creating a markdown table of contents.
 toc:
 
-  - name: Where Does the Time Go?
+  - name: Куда уходит время?
   - subsections:
-    - name: "Visualizing rooflines"
-    - name: "Matrix multiplication"
-    - name: "Network communication rooflines"
-  - name: A Few Problems to Work
+    - name: "Визуализация roofline-графиков"
+    - name: "Матричное умножение"
+    - name: "Roofline для сетевой коммуникации"
+  - name: Несколько задач для практики
 
 # Below is an example of injecting additional post-specific styles.
 # This is used in the 'Layouts' section of this post.
@@ -79,29 +80,38 @@ _styles: >
   }
 ---
 
-## Where Does the Time Go?
+## Куда уходит время?
 
-Let's start with an extremely simple question: *why does an algorithm take 50ms instead of 50s or 5ms*? What is actually happening within the model that takes substantial time and how long should we expect it to take?
+Начнём с очень простого вопроса: *почему алгоритм выполняется 50 миллисекунд, а не 50 секунд или 5 миллисекунд?* Что именно происходит внутри модели, что занимает столько времени, и сколько это вообще должно занимать?
 
-**Computation:** A deep learning model is effectively a bunch of matrix multiplications, each composed of floating-point multiplication and addition ‘operations' (FLOPs). Our accelerator speed determines how long these take to compute:
+> **От переводчика:** Возможна путаница связанная с FLOPs. В оригинале используется термин "FLOPs", который является множественным числом от "FLOP" (floating point operation). То есть если у алгоритма 5 операций сложения с плавающей точкой, то у него 5 FLOPs. Проблема в том что в интернете часто используют "FLOPS" (floating point operations per second) для обозначения количества операций в секунду, когда говорят о производительности железа. С непривычки это может сбивать с толку потому что в книге производительность пишут через FLOPs/s.
+>
+> То есть в нотации этой книги:
+>
+> - **FLOPs** — **количество** операций с плавающей точкой (например, сложность алгоритма -- 1e12 FLOPs)
+> - **FLOPs/s** — количество операций с плавающей точкой **в секунду** (например, производительность NVIDIA GeForce RTX 4070 Ti SUPER
+--  44.10e12 FLOPs/s)
+> - FLOPS - не используется в этой книге, чтобы избежать путаницы. Вместо этого будет использоваться FLOPs/s.
 
-$$\begin{equation}
-T_\text{math} = \frac{\text{Computation FLOPs}}{\text{Accelerator FLOPs/s}}
-\end{equation}$$
-
-For instance, an NVIDIA H100 can perform about 9.89e14 bfloat16<d-footnote>bf16 is short for <a href="https://en.wikipedia.org/wiki/Bfloat16_floating-point_format">bfloat16</a>, a 16-bit floating point format often used in ML.</d-footnote> FLOPs/s while a TPU v6e can perform 9.1e14 FLOPs/s.<d-footnote>H100s and B200s can usually only achieve around 80-85% of the claimed peak FLOPs, while TPUs can get closer to 95% in normal use.</d-footnote> That means doing 1e12 FLOPs on an H100 will take (roughly) `1e12 / 9.89e14 = 1.01ms` and `1e12 / 9.1e14 = 1.1ms` on a TPU v6e.<d-footnote>Note that these chips are priced differently, and this comparison does not normalize to cost.</d-footnote>
-
-**Communication within a chip:** *Within an accelerator*, tensors need to be transferred between on-chip memory (HBM) and the compute cores. You'll see the bandwidth of this link referred to as "HBM bandwidth"<d-footnote>NVIDIA also calls this "memory bandwidth."</d-footnote> On an H100, [this is about 3.35TB/s](https://www.nvidia.com/en-us/data-center/h100/) and on TPU v6e [this is about 1.6TB/s](https://cloud.google.com/tpu/docs/v6e).
-
-**Communication between chips:**  When we distribute a model *across multiple accelerators*, tensors frequently need to be transferred between them. There are often a few options for this on our hardware (ICI, DCN, and PCIe), each with different bandwidths.
-
-Whether the communication is within a chip or between chips, we measure this in bytes/s and estimate the total communication time with:
+**Вычисления:** По сути, модель глубокого обучения — это куча матричных умножений, каждое из которых состоит из операций умножения и сложения с плавающей точкой (FLOPs). Скорость нашего ускорителя определяет, сколько времени займут эти вычисления:
 
 $$\begin{equation}
-T_\text{comms} = \frac{\text{Communication Bytes}}{\text{Network/Memory Bandwidth Bytes/s}}
+T_\text{math} = \frac{\text{Вычислительная сложность (FLOPs)}}{\text{Производительность ускорителя (FLOPs/s)}}
 \end{equation}$$
 
-Typically (but not always), computation within a single chip can be overlapped with communication within a chip and between chips. This means **we can lower-bound training and inference time by using the maximum of computation and communication time**. We can also **upper-bound with their sum**. In practice, we optimize against the maximum as the algebra is simpler and we can usually come close to this bound by overlapping our communication and computation. If we optimize with the maximum in mind then the lower and upper bounds differ by at most a factor of 2 since $T_\text{math} + T_\text{comms} \leq 2 * \max(T_\text{math}, T_\text{comms})$. We then increase accuracy beyond this by modeling 'overlap regions' and overheads, which can be informed by profiling your specific model and target system.
+Например, NVIDIA H100 выполняет примерно 9.89e14 операций bfloat16<d-footnote>bf16 — это сокращение от <a href="https://en.wikipedia.org/wiki/Bfloat16_floating-point_format">bfloat16</a>, 16-битного формата с плавающей точкой, который часто используется в ML.</d-footnote> в секунду, а TPU v6e — 9.1e14 FLOPs/s.<d-footnote>H100 и B200 обычно достигают лишь 80-85% от заявленной пиковой производительности, в то время как TPU при обычном использовании могут выйти на 95%.</d-footnote> Это значит, что выполнение 1e12 FLOPs на H100 займёт примерно `1e12 / 9.89e14 = 1.01 мс`, а на TPU v6e — `1e12 / 9.1e14 = 1.1 мс`.<d-footnote>Обратите внимание, что эти чипы имеют разную цену, и данное сравнение не нормализовано по стоимости.</d-footnote>
+
+**Обмен данными внутри чипа:** Тензоры нужно постоянно перемещать между памятью высокой пропускной способности (HBM) и вычислительными ядрами ускорителя. Скорость этого обмена называют "пропускной способностью HBM"<d-footnote>NVIDIA также использует термин "пропускная способность памяти"</d-footnote>. На H100 она составляет [около 3.35 ТБ/с](https://www.nvidia.com/en-us/data-center/h100/), на TPU v6e — [около 1.6 ТБ/с](https://cloud.google.com/tpu/docs/v6e).
+
+**Обмен данными между чипами:** При распределении модели на несколько ускорителей тензоры приходится постоянно передавать между ними. Обычно для этого есть несколько вариантов связи (ICI, DCN и PCIe), каждый со своей пропускной способностью.
+
+Независимо от того, идёт ли обмен данными внутри чипа или между чипами, мы измеряем его в байт/с и оцениваем общее время коммуникации по формуле:
+
+$$\begin{equation}
+T_\text{comms} = \frac{\text{Объём данных (байты)}}{\text{Пропускная способность (байт/с)}}
+\end{equation}$$
+
+Обычно (но не всегда) вычисления внутри одного чипа можно совместить с обменом данными как внутри чипа, так и между чипами. Это означает, что **нижнюю границу времени обучения и инференса можно оценить через максимум из времени вычислений и времени коммуникации**. **Верхнюю границу** можно оценить **их суммой**. На практике мы оптимизируем по максимуму, так как математика проще, и обычно можно приблизиться к этой границе, совмещая коммуникацию с вычислениями. При оптимизации по максимуму нижняя и верхняя границы различаются не более чем в 2 раза, поскольку $T_\text{math} + T_\text{comms} \leq 2 \cdot \max(T_\text{math}, T_\text{comms})$. Затем мы повышаем точность оценки, моделируя «области перекрытия» и накладные расходы — для этого можно использовать профилирование вашей конкретной модели и целевой системы.
 
 $$\begin{equation}
 T_\text{lower}=\max(T_\text{math}, T_\text{comms})
@@ -111,118 +121,118 @@ $$\begin{equation}
 T_\text{upper} = T_\text{math} + T_\text{comms}
 \end{equation}$$
 
-If we assume we can perfectly overlap communication and computation, when $T_\text{math} > T_\text{comms}$, we see full utilization from our hardware. We call this being "compute-bound". When $T_\text{comms} > T_\text{math}$, we tend to be "communication-bound" and at least some fraction of our accelerator FLOPs/s is wasted waiting for data to be passed around. One way to tell if an operation will be compute or communication-bound is to look at its "*arithmetic intensity*" or "*operational intensity*".
+Если предположить, что мы можем идеально совместить коммуникацию и вычисления, то при $T_\text{math} > T_\text{comms}$ железо используется полностью. Это называется "compute-bound" (ограничение по вычислениям). Когда $T_\text{comms} > T_\text{math}$, мы "communication-bound" (ограничены коммуникацией), и часть FLOPS ускорителя простаивает в ожидании передачи данных. Определить, будет ли операция ограничена вычислениями или коммуникацией, можно по её "*arithmetic intensity*" (арифметической интенсивности) или "*operational intensity*" (операционной интенсивности).
 
-**Definition:** the arithmetic intensity of an algorithm is given by the ratio of the total FLOPs it performs to the number of bytes it needs to communicate — either within a chip or between chips.
+**Определение:** арифметическая интенсивность алгоритма — это отношение общего числа операций (FLOPs) к объёму передаваемых данных в байтах (внутри чипа или между чипами).
 
 $$\begin{equation}
-\text{Arithmetic Intensity} = \frac{\text{Computation FLOPs}}{\text{Communication Bytes}}
+\text{Арифметическая интенсивность} = \frac{\text{Вычислительная сложность (FLOPs)}}{\text{Объём данных (байты)}}
 \end{equation}$$
 
-Arithmetic intensity measures the "FLOPs per byte" of a given operation. To a first order, when our arithmetic intensity is high, $T_\text{math}$ is large compared to $T_\text{comms}$ and we typically use most of the available FLOPs. When the opposite is true, we spent more time on comms and waste FLOPs. The point where this crossover happens is the "peak arithmetic intensity" of our hardware, the ratio of peak accelerator FLOPs/s to accelerator bandwidth.
+Арифметическая интенсивность показывает количество операций на байт для данной операции. В первом приближении: когда интенсивность высокая, $T_\text{math}$ значительно больше $T_\text{comms}$, и мы используем большую часть доступных FLOPs. В обратном случае мы тратим больше времени на передачу данных и теряем вычислительную мощность. Точка, где происходит этот переход, называется "пиковой арифметической интенсивностью" железа — это отношение пиковой производительности ускорителя (FLOPs/s) к его пропускной способности (байт/с).
 
 $$\begin{align*}
-T_\text{math} > T_\text{comms} \Leftrightarrow \frac{\text{Computation FLOPs}} {\text{Accelerator FLOPs/s}} > \frac{\text{Communication Bytes}}{\text{Bandwidth Bytes/s}} & \\[0.5em]
-\Leftrightarrow \frac{\text{Computation FLOPs}}{\text{Communication Bytes}} > \frac{\text{Accelerator FLOPs/s}}{\text{Bandwidth Bytes/s}} & \\[0.5em]
-\Leftrightarrow \text{Intensity}(\text{Computation}) > \text{Intensity}(\text{Accelerator}) & \\
+T_\text{math} > T_\text{comms} \Leftrightarrow \frac{\text{Вычислительная сложность (FLOPs)}} {\text{Производительность ускорителя (FLOPs/s)}} > \frac{\text{Объём данных (байты)}}{\text{Пропускная способность (байт/с)}} & \\[0.5em]
+\Leftrightarrow \frac{\text{Вычислительная сложность (FLOPs)}}{\text{Объём данных (байты)}} > \frac{\text{Производительность ускорителя (FLOPs/s)}}{\text{Пропускная способность (байт/с)}} & \\[0.5em]
+\Leftrightarrow \text{Интенсивность}(\text{Вычисления}) > \text{Интенсивность}(\text{Ускоритель}) & \\
 \end{align*}$$
 
-The quantity $\text{Intensity}(\text{Accelerator})$ is the arithmetic intensity at which our accelerator achieves its peak FLOPs/s. **For the TPU v5e MXU, this is about 240 FLOPs/byte**, since the TPU can perform `1.97e14` FLOPs/s and load `8.2e11` bytes/s from HBM.<d-footnote>The MXU is the matrix multiply unit on the TPU. We specify this here because the TPU has other accelerators like the VPU that are responsible for elementwise operations that have a different peak FLOPs/s.</d-footnote> That means if an algorithm has a lower arithmetic intensity than 240 FLOPs/byte, it will be bound by byte loading and thus we won't make good use of our hardware.<d-footnote>This is only true if the algorithm loads its weights from HBM and runs in the MXU. As we'll discuss in the next section, we can sometimes store parameters in VMEM which has a much higher bandwidth. Many algorithms also run in the VPU, which has different performance characteristics.</d-footnote> Let's look at one such example:
+Величина $\text{Интенсивность}(\text{Ускоритель})$ — это арифметическая интенсивность, при которой ускоритель достигает пиковой производительности в FLOPs/s. **Для MXU в TPU v5e это примерно 240 FLOPs/байт**, поскольку TPU может выполнять `1.97e14` FLOPs/s и загружать `8.2e11` байт/с из HBM.<d-footnote>MXU (matrix multiply unit) — это блок матричного умножения в TPU. Мы уточняем это, потому что в TPU есть и другие ускорители, например VPU, отвечающий за поэлементные операции с другой пиковой производительностью.</d-footnote> Это означает, что если алгоритм имеет арифметическую интенсивность ниже 240 FLOPs/байт, он будет ограничен скоростью загрузки данных, и мы не сможем эффективно использовать железо.<d-footnote>Это справедливо только если алгоритм загружает веса из HBM и работает в MXU. Как мы обсудим в следующем разделе, иногда параметры можно хранить в VMEM, у которой значительно выше пропускная способность. Многие алгоритмы также работают в VPU с другими характеристиками производительности.</d-footnote> Рассмотрим один такой пример:
 
-**<span style="color:#7ab5ff">Example (dot product)</span>:** to compute the dot product of two vectors in bfloat16 precision, `x • y: bf16[N], bf16[N] → bf16[1]`, we need to load $x$ and $y$ from memory, each of which has $2 * N = 2N$ bytes, perform $N$ multiplications and $N-1$ additions, and write $2$ bytes back into HBM
+**<span style="color:#7ab5ff">Пример (скалярное произведение)</span>:** чтобы вычислить скалярное произведение двух векторов в точности bfloat16, `x • y: bf16[N], bf16[N] → bf16[1]`, нужно загрузить $x$ и $y$ из памяти (каждый по $2 * N = 2N$ байт), выполнить $N$ умножений и $N-1$ сложений, и записать $2$ байта обратно в HBM
 $$\begin{equation}
-\text{Intensity}(\text{dot product}) = \frac{\text{Total FLOPs}}{\text{Total Bytes}} = \frac{N + N - 1}{2N + 2N + 2} = \frac{2N - 1}{4N + 2} \rightarrow \frac{1}{2}
+\text{Интенсивность}(\text{скалярное произведение}) = \frac{\text{Всего FLOPs}}{\text{Всего байт}} = \frac{N + N - 1}{2N + 2N + 2} = \frac{2N - 1}{4N + 2} \rightarrow \frac{1}{2}
 \end{equation}$$
 
-as $N\rightarrow\infty$. So the dot product has an arithmetic intensity of $\frac{1}{2}$ or, put another way, the dot product does 0.5 floating point operations per byte loaded. This means our arithmetic intensity is lower than that of our hardware and we will be communication-bound.<d-footnote>The 240 number above is not the correct comparison here since, as you will see in the next section, a dot-product is performed on the VPU and not the MXU. The TPU v5p VPU can do roughly 7e12 FLOPs / second, so its critical intensity is around 3, which means we are still somewhat comms-bound here. Either way, the fact that our intensity is low and constant means it is difficult to be compute-bound on most hardware.</d-footnote>
+при $N\rightarrow\infty$. Таким образом, скалярное произведение имеет арифметическую интенсивность $\frac{1}{2}$, или, другими словами, выполняет 0.5 операции с плавающей точкой на байт загруженных данных. Это означает, что наша арифметическая интенсивность ниже, чем у железа, и мы будем ограничены скоростью передачи данных.<d-footnote>Значение 240 выше не подходит для сравнения, поскольку, как мы увидим в следующем разделе, скалярное произведение выполняется на VPU, а не на MXU. VPU в TPU v5p может выполнять примерно 7e12 FLOPs/секунду, поэтому его критическая интенсивность около 3, что означает, что мы всё ещё частично ограничены передачей данных. В любом случае, низкая и константная интенсивность означает, что на большинстве железа сложно быть ограниченным вычислениями.</d-footnote>
 
-### Visualizing rooflines
+### Визуализация roofline-графиков
 
-We can visualize the tradeoff between memory and compute using a **roofline plot**, which plots the peak achievable FLOPs/s (throughput) of an algorithm on our hardware (the y-axis) against the arithmetic intensity of that algorithm (the x-axis). Here's an example log-log plot:
+Компромисс между памятью и вычислениями можно визуализировать с помощью **roofline-графика**, который отображает достижимую пиковую производительность (FLOPs/s) алгоритма на нашем железе (ось Y) в зависимости от арифметической интенсивности этого алгоритма (ось X). Вот пример в логарифмическом масштабе:
 
-{% include figure.liquid path="assets/img/roofline-improved.png" class="img-fluid" caption="<b>Figure:</b> an example roofline plot showing two algorithms with different arithmetic intensities (Algo 1 and Algo 2) and their corresponding theoretical peak throughput under different bandwidths (BW1 and BW2). In the red area, an algorithm is bandwidth bound at both bandwidths and is wasting some fraction of the hardware's peak FLOPs/s. The yellow area is bandwidth-bound only at the lower bandwidth (BW1). The green area is compute-bound at all bandwidths. Here, we are using the peak FLOPs/s of the accelerator and increasing bandwidth or improving intensity yield no benefit." %}
+{% include figure.liquid path="assets/img/roofline-improved.png" class="img-fluid" caption="<b>Рисунок:</b> пример roofline-графика, показывающий два алгоритма с разной арифметической интенсивностью (Algo 1 и Algo 2) и их теоретическую пиковую производительность при разной пропускной способности (BW1 и BW2). В красной области алгоритм ограничен пропускной способностью при обеих BW и теряет часть пиковой производительности железа. Жёлтая область ограничена пропускной способностью только при низкой BW1. Зелёная область ограничена вычислениями при любой пропускной способности. Здесь мы используем пиковую производительность ускорителя, и увеличение пропускной способности или интенсивности не даёт выигрыша." %}
 
-Above, as the intensity increases (moving left to right), we initially see a linear increase in the performance of our algorithm (in FLOPs/s) until we hit the critical arithmetic intensity of the hardware, 240 in the case of the TPU v5e. Any algorithm with a lower intensity will be bandwidth (BW) bound and limited by the peak memory bandwidth (shown in red). Any algorithm to the right will fully utilize our FLOPs (shown in green). Here, Algo 1 is comms-bound and uses only a fraction of the total hardware FLOPs/s. Algo 2 is compute-bound. We can generally improve the performance of an algorithm either by increasing its arithmetic intensity or by increasing the memory bandwidth available (moving from BW1 to BW2).
+По мере роста интенсивности (слева направо) мы сначала видим линейный рост производительности алгоритма (в FLOPs/s), пока не достигнем критической арифметической интенсивности железа — 240 для TPU v5e. Любой алгоритм с меньшей интенсивностью будет ограничен пропускной способностью памяти (BW, показано красным). Любой алгоритм правее будет полностью использовать доступные FLOPs (показано зелёным). Здесь Algo 1 ограничен передачей данных и использует лишь часть общей производительности железа. Algo 2 ограничен вычислениями. В общем случае производительность алгоритма можно улучшить либо увеличив его арифметическую интенсивность, либо увеличив доступную пропускную способность памяти (переход от BW1 к BW2).
 
-### Matrix multiplication
+### Матричное умножение
 
-Let's look at our soon-to-be favorite algorithm: matrix multiplication (aka matmul). We write $X * Y \rightarrow Z$ where $X$ has shape $\text{bf16}[B, D]$, $Y$ has shape $\text{bf16}[D, F]$, and $Z$ has shape $\text{bf16}[B, F]$. To do the matmul we need to load $2DF + 2BD$ bytes, perform $2BDF$ FLOPs, and write $2BF$ bytes back.<d-footnote>Technically we perform $BF \times (2D - 1)$ FLOPs but this is close enough. This comes from $BDF$ multiplications and $BF * (D-1)$ additions. Section 4 has more details.</d-footnote> <d-footnote>Although the output of a matmul is technically float32 we usually cast down to bfloat16 before copying back to HBM.</d-footnote> Thus:
+Рассмотрим наш любимый алгоритм: матричное умножение (matmul). Запишем $X * Y \rightarrow Z$; где $X$ имеет размерность $\text{bf16}[B, D]$; $Y$ размерности $\text{bf16}[D, F]$; а $Z$ размерности $\text{bf16}[B, F]$. Для выполнения matmul нужно загрузить $2DF + 2BD$ байт, выполнить $2BDF$ FLOPs и записать обратно $2BF$ байт.<d-footnote>Технически мы выполняем $BF \times (2D - 1)$ FLOPs, но это достаточно близко. Это $BDF$ умножений и $BF * (D-1)$ сложений. Подробнее в разделе 4.</d-footnote> <d-footnote>Хотя результат matmul технически получается в float32, обычно мы приводим его к bfloat16 перед записью обратно в HBM.</d-footnote> Таким образом:
 
 $$\begin{equation}
-\text{Intensity}(\text{matmul}) = \frac{2BDF}{2BD + 2DF + 2BF} = \frac{BDF}{BD + DF + BF}
+\text{Интенсивность}(\text{matmul}) = \frac{2BDF}{2BD + 2DF + 2BF} = \frac{BDF}{BD + DF + BF}
 \end{equation}$$
 
-We can get a nice simplification if we assume our "batch size" $B$ is small relative to $D$ and $F$. Then we get
+Можно упростить, если предположить, что "размер батча" $B$ мал относительно $D$ и $F$. Тогда получим
 
 $$\begin{equation}
 \frac{BDF}{BD + DF + BF} \approxeq \frac{BDF}{DF} = B
 \end{equation}$$
 
 $$\begin{equation}
-\text{Intensity}(\text{matmul}) > \text{Intensity}(\text{TPU}) \implies B > \frac{1.97e14}{8.20e11} = 240
+\text{Интенсивность}(\text{matmul}) > \text{Интенсивность}(\text{TPU}) \implies B > \frac{1.97e14}{8.20e11} = 240
 \end{equation}$$
 
-This is a reasonable assumption for Transformer matmuls since we typically have a local (per-replica) batch size $B < 1024$ tokens (*not sequences*) but $D$ and $F > 8000$. Thus we generally become compute-bound when our per-replica<d-footnote>We say per-replica because, if we do some kind of model sharding to increase the number of chips used in the matmul, we scale both our available compute and memory bandwidth by the same amount. Thus the critical batch size is true per independent copy of the model weights.</d-footnote> batch size is greater than 240 tokens, a very simple rule!
+Это разумное предположение для matmul в трансформерах, поскольку обычно локальный (на реплику) размер батча $B < 1024$ токенов (*не* последовательностей), но $D$ и $F > 8000$. Таким образом, мы становимся ограничены вычислениями, когда размер батча на реплику<d-footnote>Мы говорим "на реплику", потому что при использовании шардинга модели для увеличения числа чипов в matmul мы масштабируем одновременно и доступные вычисления, и пропускную способность памяти. Поэтому критический размер батча справедлив для каждой независимой копии весов модели.</d-footnote> превышает 240 токенов — очень простое правило!
 
-<p markdown=1 class="takeaway">**Takeaway:** for a bfloat16 matmul to be compute-bound on most TPUs, we need our per-replica token batch size to be greater than 240.<d-footnote>Note that this is _not_ the batch size in the usual sense, where it means the batch size in sequences. It turns out most rooflines depend purely on the number of tokens, whether they belong to the same or different sequences. For instance if you have a batch size of 512 sequences of 4096 tokens on 128 GPUs, you have a total batch size of `512 * 4096 = 2M` tokens, and a local batch size of 16k tokens.</d-footnote></p>
+<p markdown=1 class="takeaway">**Вывод:** чтобы matmul в bfloat16 был ограничен вычислениями на большинстве TPU, размер батча в токенах на реплику должен превышать 240.<d-footnote>Обратите внимание, что это _не_ размер батча в обычном смысле (количество последовательностей). Оказывается, большинство roofline зависят только от числа токенов, независимо от того, принадлежат ли они одной или разным последовательностям. Например, если у вас батч из 512 последовательностей по 4096 токенов на 128 GPU, у вас общий батч `512 * 4096 = 2M` токенов и локальный батч 16k токенов.</d-footnote></p>
 
-This comes with a few notable caveats we'll explore in the problems below, particularly with respect to quantization (e.g., if we quantize our activations but still do full-precision FLOPs), but it's a good rule to remember. For GPUs, this number is slightly higher (closer to 300), but the same conclusion generally holds. When we [decompose a big matmul into smaller matmuls](https://docs.jax.dev/en/latest/pallas/tpu/matmul.html#your-first-matrix-multiplication-kernel), the tile sizes also matter.<d-footnote>When we do a large matrix multiplication, we need to break it down into smaller tiles which fit into VMEM/SMEM/TMEM, the higher-bandwidth on-chip memory. This causes us to load chunks multiple times, so it's no longer quite true that we only load $O(N^2)$ bytes. Consider an $(m, k) \cdot (k, n)$ matmul with tile sizes $bm$, $bk$, $bm$. Let $tm = m / bm$, etc. Then the total FLOPs is $2 \cdot tm \cdot tn \cdot tk \cdot bm \cdot bn \cdot bk$ and the total bytes are $2 \cdot tm \cdot tn \cdot (tk \cdot (bm \cdot bk + bk \cdot bn) + 2 \cdot bm \cdot bn)$. Ignoring the last term, we have an intensity of $bm \cdot bn / (bm + bn)$, which is similar to the above.</d-footnote> We'll discuss the lower-level GPU and TPU details in the [next section](../tpus).
+Есть несколько важных оговорок, которые мы рассмотрим в задачах ниже, особенно касающихся квантизации (например, когда мы квантизуем активации, но всё ещё выполняем FLOPs в полной точности), но это правило полезно запомнить. Для GPU это число чуть выше (ближе к 300), но общий вывод тот же. Когда мы [разбиваем большой matmul на меньшие](https://docs.jax.dev/en/latest/pallas/tpu/matmul.html#your-first-matrix-multiplication-kernel), размеры тайлов также имеют значение.<d-footnote>При большом матричном умножении нужно разбить его на меньшие тайлы, которые помещаются в VMEM/SMEM/TMEM — высокоскоростную память на чипе. Из-за этого мы загружаем блоки несколько раз, поэтому уже не совсем верно, что загружаем только $O(N^2)$ байт. Рассмотрим matmul $(m, k) \cdot (k, n)$ с размерами тайлов $bm$, $bk$, $bn$. Пусть $tm = m / bm$ и т.д. Тогда общие FLOPs — это $2 \cdot tm \cdot tn \cdot tk \cdot bm \cdot bn \cdot bk$, а общие байты — $2 \cdot tm \cdot tn \cdot (tk \cdot (bm \cdot bk + bk \cdot bn) + 2 \cdot bm \cdot bn)$. Игнорируя последний член, получаем интенсивность $bm \cdot bn / (bm + bn)$, что похоже на вышеприведённое.</d-footnote> Низкоуровневые детали GPU и TPU мы обсудим в [следующем разделе](../tpus).
 
-### Network communication rooflines
+### Roofline для сетевой коммуникации
 
-All the rooflines we've discussed so far have been memory-bandwidth rooflines, _all within a single chip_. This shouldn't be taken as a rule. In fact, most of the rooflines we'll care about in this book involve communication between chips: usually matrix multiplications that involve matrices sharded across multiple TPUs.
+Все roofline-графики, которые мы обсуждали до сих пор, относились к пропускной способности памяти _внутри одного чипа_. На самом деле, большинство roofline в этой книге связаны с коммуникацией между чипами: обычно это матричные умножения, где матрицы распределены (шардированы) между несколькими TPU.
 
-To pick a somewhat contrived example, say we want to multiply two big matrices $X\sim \text{bfloat16[B, D]}$ and $Y \sim \text{bfloat16[D, F]}$ which are split evenly across 2 TPUs/GPUs (along the $D$ dimension). To do this multiplication (as we'll see in [Section 3](../sharding)), we can multiply half of each matrix on each TPU (`A = X[:, :D // 2] @ Y[:D // 2, :]` on TPU 0 and `B = X[:, D // 2:] @ Y[D // 2:, :]` on TPU 1) and then copy the resulting "partial sums" to the other TPU and add them together. Say we can copy `4.5e10` bytes in each direction and perform `1.97e14` FLOPs/s on each chip. What are $T_\text{math}$ and $T_\text{comms}$?
+Рассмотрим несколько искусственный пример: допустим, мы хотим перемножить две большие матрицы $X\sim \text{bfloat16[B, D]}$ и $Y \sim \text{bfloat16[D, F]}$, которые равномерно распределены между 2 TPU/GPU (по размерности $D$). Чтобы выполнить это умножение (как мы увидим в [разделе 3](../sharding)), можно перемножить половину каждой матрицы на каждом TPU (`A = X[:, :D // 2] @ Y[:D // 2, :]` на TPU 0 и `B = X[:, D // 2:] @ Y[D // 2:, :]` на TPU 1), а затем скопировать получившиеся "частичные суммы" на другой TPU и сложить их. Допустим, мы можем передать `4.5e10` байт в каждом направлении и выполнять `1.97e14` FLOPs/s на каждом чипе. Чему равны $T_\text{math}$ и $T_\text{comms}$?
 
-$T_\text{math}$ is clearly half of what it was before, since each TPU is doing half the work, i.e.<d-footnote>We're ignoring the FLOPs required to add the two partial sums together (another DF additions), but this is basically negigible.</d-footnote>
+$T_\text{math}$ очевидно вдвое меньше, чем раньше, поскольку каждый TPU выполняет половину работы, то есть<d-footnote>Мы игнорируем FLOPs, необходимые для сложения двух частичных сумм (ещё DF сложений), но это пренебрежимо мало.</d-footnote>
 
-$$T_\text{math} = \frac{2BDF}{2 \cdot \text{Accelerator FLOPs/s}} = \frac{BDF}{1.97e14}$$
+$$T_\text{math} = \frac{2BDF}{2 \cdot \text{Производительность ускорителя (FLOPs/s)}} = \frac{BDF}{1.97e14}$$
 
-Now what about $T_\text{comms}$? This now refers to the communication time between chips! This is just the total bytes sent divided by the network bandwidth, i.e.
+А что с $T_\text{comms}$? Теперь это время коммуникации между чипами! Это просто общий объём переданных данных, делённый на пропускную способность сети:
 
-$$T_\text{comms} = \frac{2BF}{\text{Network Bandwidth}} = \frac{2BF}{4.5e10}$$
+$$T_\text{comms} = \frac{2BF}{\text{Пропускная способность сети}} = \frac{2BF}{4.5e10}$$
 
-Therefore we become compute-bound (now with respect to the inter-chip network) when $$\text{Intensity}(\text{matmul (2-chips)}) > \text{Intensity}(\text{TPU w.r.t. inter-chip network})$$ or equivalently when $\frac{BDF}{2BF} = \frac{D}{2} > \frac{1.97e14}{4.5e10} = 4377$ or $D > 8755$. Note that, unlike before, the critical threshhold now depends on $D$ and not $B$! Try to think why that is. This is just one such example, but we highlight that this kind of roofline is critical to knowing when we can parallelize an operation across multiple TPUs.
+Следовательно, мы становимся ограничены вычислениями (теперь относительно межчиповой сети), когда $$\text{Интенсивность}(\text{matmul (2 чипа)}) > \text{Интенсивность}(\text{TPU относительно межчиповой сети})$$ или, что эквивалентно, когда $\frac{BDF}{2BF} = \frac{D}{2} > \frac{1.97e14}{4.5e10} = 4377$, то есть $D > 8755$. Обратите внимание: в отличие от предыдущего случая, критический порог теперь зависит от $D$, а не от $B$! Попробуйте понять, почему. Это лишь один пример, но мы подчёркиваем, что такой roofline критически важен для понимания, когда можно распараллелить операцию между несколькими TPU.
 
-## A Few Problems to Work
+## Несколько задач для практики
 
-**Question 1 [int8 matmul]:** Say we want to do the matmul $X[B, D] \cdot_D Y[D, F] \rightarrow Z[B, F]$ in int8 precision (1 byte per parameter) instead of bfloat16.<d-footnote>Here and throughout we'll use the notation $A \cdot_D B$ to indicate that the multiplication is performing a contraction over the D dimension. This is an abuse of einsum notation.</d-footnote>
+**Задача 1 [int8 matmul]:** Допустим, мы хотим выполнить matmul $X[B, D] \cdot_D Y[D, F] \rightarrow Z[B, F]$ в точности int8 (1 байт на параметр) вместо bfloat16.<d-footnote>Здесь и далее мы используем нотацию $A \cdot_D B$ для обозначения умножения со сверткой по размерности D. Это вольность в использовании einsum-нотации.</d-footnote>
 
-1. How many bytes need to be loaded from memory? How many need to be written back to memory?
-2. How many total OPs are performed?
-3. What is the arithmetic intensity?
-4. What is a roofline estimate for $T_\text{math}$ and $T_\text{comms}$? What are reasonable upper and lower bounds for the runtime of the whole operation?
+1. Сколько байт нужно загрузить из памяти? Сколько нужно записать обратно в память?
+2. Сколько всего операций (OPs) выполняется?
+3. Какова арифметическая интенсивность?
+4. Какова roofline-оценка для $T_\text{math}$ и $T_\text{comms}$? Каковы разумные верхняя и нижняя границы времени выполнения всей операции?
 
-Assume our HBM bandwidth is `8.1e11` bytes/s and our int8 peak OPs/s is `3.94e14` (about 2x bfloat16).
+Предположим, что пропускная способность HBM составляет `8.1e11` байт/с, а пиковая производительность int8 — `3.94e14` OPs/s (примерно в 2 раза выше bfloat16).
 
-{% details Click here for the answer. %}
+{% details Нажмите, чтобы увидеть ответ. %}
 
-1. Because we're storing our parameters in int8, we have 1 byte per parameter, so we have $$BD + DF$$ bytes loaded from HBM and $$BF$$ written back.
-2. This is the same as in bfloat16, but in theory int8 OPs/s should be faster. So this is still $2BDF$ FLOPs.
-3. Arithmetic intensity is $$2BDF / (BD + DF + BF)$$. If we make the same assumption as above about $$B \ll D$$ and $$B \ll F$$, we get an arithmetic intensity of $$2B$$, meaning our rule becomes $B > \text{HBM int8 arithmetic intensity} / 2$. Using the numbers given, this int8 intensity is `3.94e14 / 8.1e11 = 486`, so the rule is $B > 486 / 2 = 243$. Note that this is basically unchanged!
-4. $$T_\text{math} = 2BDF / 3.94e14$$ and $$T_\text{comms} = (BD + DF + BF) / 8.1e11$$, so a reasonable lower bound is $$\max(T_\text{math}, T_\text{comms})$$ and an upper bound is $$T_\text{math} + T_\text{comms}$$.
-
-{% enddetails %}
-
-**Question 2 [int8 + bf16 matmul]:** In practice we often do different weight vs. activation quantization, so we might store our weights in very low precision but keep activations (and compute) in a higher precision. Say we want to quantize our weights in int8 but keep activations (and compute) in bfloat16. At what batch size do we become compute bound? Assume `1.97e14` bfloat16 FLOPs/s.
-
-*Hint: this means specifically `bfloat16[B, D] * int8[D, F] -> bfloat16[B, F]` where $B$ is the "batch size".*
-
-{% details Click here for the answer. %}
-
-Again assuming B is small, we have 2BDF bfloat16 FLOPs but only DF weights (instead of 2DF in bfloat16). This means we become compute-bound when $$2B > 240$$ or $$B > 120$$. This is a lot lower, meaning if we can do int8 weight quantization (which is fairly easy to do) but still do bfloat16 FLOPs, we get a meaningful win in efficiency (although int8 OPs would be better).
+1. Поскольку параметры хранятся в int8, у нас 1 байт на параметр, поэтому из HBM загружается $$BD + DF$$ байт и записывается обратно $$BF$$ байт.
+2. Это то же самое, что и в bfloat16, но теоретически int8 OPs/s должен быть быстрее. Итого всё ещё $2BDF$ FLOPs.
+3. Арифметическая интенсивность составляет $$2BDF / (BD + DF + BF)$$. Если сделать то же предположение, что $$B \ll D$$ и $$B \ll F$$, получим арифметическую интенсивность $$2B$$, то есть наше правило принимает вид $B > \text{арифметическая интенсивность HBM для int8} / 2$. Используя приведённые числа, эта int8-интенсивность равна `3.94e14 / 8.1e11 = 486`, поэтому правило имеет вид $B > 486 / 2 = 243$. Обратите внимание, что это практически не изменилось!
+4. $$T_\text{math} = 2BDF / 3.94e14$$ и $$T_\text{comms} = (BD + DF + BF) / 8.1e11$$, поэтому разумная нижняя граница — это $$\max(T_\text{math}, T_\text{comms})$$, а верхняя граница — $$T_\text{math} + T_\text{comms}$$.
 
 {% enddetails %}
 
-**Question 3:** Taking the setup from Question 2, make a roofline plot of peak FLOPs/s vs. $B$ for $F = D = 4096$ and $F = D = 1024$. *Use the exact number of bytes loaded, not an approximation.*
+**Задача 2 [int8 + bf16 matmul]:** На практике мы часто используем разную квантизацию для весов и активаций: веса можем хранить в очень низкой точности, а активации (и вычисления) — в более высокой. Допустим, мы хотим квантизовать веса в int8, но сохранить активации (и вычисления) в bfloat16. При каком размере батча мы становимся ограничены вычислениями? Предположим производительность `1.97e14` bfloat16 FLOPs/s.
 
-{% details Click here for the answer. %}
+*Подсказка: это означает конкретно `bfloat16[B, D] * int8[D, F] -> bfloat16[B, F]`, где $B$ — это "размер батча".*
 
-Here is the plot in question:
+{% details Нажмите, чтобы увидеть ответ. %}
+
+Снова предполагая, что B мало, имеем 2BDF bfloat16 FLOPs, но только DF весов (вместо 2DF в bfloat16). Это означает, что мы становимся ограничены вычислениями, когда $$2B > 240$$ или $$B > 120$$. Это намного ниже, что означает: если мы можем квантизовать веса в int8 (что довольно легко сделать), но всё ещё выполнять FLOPs в bfloat16, мы получаем ощутимый выигрыш в эффективности (хотя int8 OPs были бы ещё лучше).
+
+{% enddetails %}
+
+**Задача 3:** Используя условия из задачи 2, постройте roofline-график пиковой производительности (FLOPs/s) в зависимости от $B$ для $F = D = 4096$ и $F = D = 1024$. *Используйте точное количество загружаемых байт, а не приближение.*
+
+{% details Нажмите, чтобы увидеть ответ. %}
+
+Вот требуемый график:
 
 {% include figure.liquid path="assets/img/roofline-plot-q3.png" class="img-fluid img-small" %}
 
-Note that both models eventually acheive the peak hardware FLOPs/s, but the larger D/F achieve it sooner. D=F=1024 almost doubles the critical batch size. The code to generate this figure is here:
+Обратите внимание, что обе модели в конечном итоге достигают пиковой производительности железа, но при больших D/F это происходит раньше. При D=F=1024 критический размер батча почти удваивается. Код для генерации этого графика:
 
 ```py
 import matplotlib.pyplot as plt
@@ -251,24 +261,24 @@ plt.grid()
 
 {% enddetails %}
 
-**Question 4:** What if we wanted to perform $\text{int8[B, D]} *_D \text{int8[B, D, F]} \rightarrow \text{int8[B, F]}$ where we imagine having a different matrix for each batch element. What is the arithmetic intensity of this operation?
+**Задача 4:** Что если мы хотим выполнить $\text{int8[B, D]} *_D \text{int8[B, D, F]} \rightarrow \text{int8[B, F]}$, где для каждого элемента батча используется своя матрица. Какова арифметическая интенсивность этой операции?
 
-{% details Click here for the answer. %}
+{% details Нажмите, чтобы увидеть ответ. %}
 
-Let's start by looking at the total FLOPs and comms.
+Начнём с общих FLOPs и коммуникаций.
 
-1. Total FLOPs: the FLOPs is basically the same, since we're doing the same number of $$BD \times DF$$ matmuls (this is discussed more in section 4). So this is just $$2BDF$$.
-2. Total comms: we have a lot more comms here: $$BD + BDF + BF$$.
-3. Therefore, our arithmetic intensity is now actually $$2BDF / (BD + BDF + BF)$$. Since $$BDF$$ dominates the denominator, this is roughly $$2$$. So instead of it depending on the batch size, this is essentially constant. This is bad because it means we'll basically always be comms bound no matter what.
-
-{% enddetails %}
-
-**Problem 5 [Memory Rooflines for GPUs]:** Using the [spec sheet provided by NVIDIA for the H100](https://www.nvidia.com/en-us/data-center/h100/), calculate the batch size at which a matrix multiplication will become compute-bound. *Note that the Tensor Core FLOPs numbers are twice the true value since they're only achievable with structured sparsity.*
-
-{% details Click here for the answer. %}
-
-From the spec sheet, we see that the reported bfloat16 FLOPs value is `1.979e15` FLOPs/s with an asterisk noting "with sparsity". The true value is half this without sparsity, meaning close to `1e15` FLOPs/s. The memory bandwidth is 3.35TB/s, or `3.35e12` bytes / second. Thus $B_\text{crit}$ is `1e15 / 3.35e12 = 298`, rather similar to the TPU.
+1. Всего FLOPs: количество FLOPs в основном то же, поскольку мы выполняем то же количество matmul размером $$BD \times DF$$ (подробнее в разделе 4). Итого $$2BDF$$.
+2. Всего коммуникаций: здесь коммуникаций значительно больше: $$BD + BDF + BF$$.
+3. Следовательно, наша арифметическая интенсивность теперь равна $$2BDF / (BD + BDF + BF)$$. Поскольку $$BDF$$ доминирует в знаменателе, это примерно $$2$$. То есть вместо зависимости от размера батча интенсивность фактически константна. Это плохо, потому что означает, что мы практически всегда будем ограничены коммуникациями, независимо от параметров.
 
 {% enddetails %}
 
-<h3 markdown=1 class="next-section">That's it for Part 1! For Part 2, looking at how real TPUs handle FLOPs and communication, [click here](../tpus).</h3>
+**Задача 5 [Rooflines для GPU]:** Используя [спецификацию NVIDIA для H100](https://www.nvidia.com/en-us/data-center/h100/), рассчитайте размер батча, при котором матричное умножение становится ограниченным вычислениями. *Обратите внимание, что значения FLOPs для Tensor Core указаны в два раза больше реального значения, поскольку они достижимы только при структурированной разреженности.*
+
+{% details Нажмите, чтобы увидеть ответ. %}
+
+Из спецификации видно, что заявленное значение bfloat16 FLOPs составляет `1.979e15` FLOPs/s со звёздочкой "с разреженностью". Реальное значение без разреженности вдвое меньше, то есть около `1e15` FLOPs/s. Пропускная способность памяти — 3.35TB/s, или `3.35e12` байт/секунду. Таким образом, $B_\text{crit}$ равно `1e15 / 3.35e12 = 298`, что довольно близко к TPU.
+
+{% enddetails %}
+
+<h3 markdown=1 class="next-section">На этом часть 1 завершена! Для части 2, где рассматривается, как реальные TPU производят вычисления, [нажмите здесь](../tpus).</h3>
